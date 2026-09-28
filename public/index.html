@@ -331,7 +331,24 @@
 
     try {
 
-      const image = await fileToDataURL(selectedFile);
+      let file = selectedFile;
+
+if (!(file instanceof Blob) &&
+    imageInput.files &&
+    imageInput.files[0] instanceof Blob) {
+  file = imageInput.files[0];
+}
+
+if (!(file instanceof Blob) && preview.src) {
+  const blobResponse = await fetch(preview.src);
+  file = await blobResponse.blob();
+}
+
+if (!(file instanceof Blob)) {
+  throw new Error("تعذر الوصول إلى صورة الفاتورة، اختاري الصورة مرة ثانية");
+}
+
+const image = await fileToDataURL(file);
 
       const response =
         await fetch("/api/read-receipt", {

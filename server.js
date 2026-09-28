@@ -21,7 +21,7 @@ const upload = multer({
   }
 });
 
-app.use(express.json());
+app.use(express.json({ limit: "15mb" }));
 
 // ملفات واجهة البرنامج
 app.use(express.static("public"));

@@ -1,4 +1,4 @@
-importNode express from "express";
+import express from "express";
 import multer from "multer";
 import OpenAI from "openai";
 import dotenv from "dotenv";

@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>مصروفي</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 15px;
+      direction: rtl;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: auto;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    .box {
+      background: white;
+      padding: 16px;
+      margin-bottom: 15px;
+      border-radius: 12px;
+    }
+
+    label {
+      display: block;
+      margin-top: 10px;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+
+    input, button {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px;
+      margin-bottom: 10px;
+      font-size: 16px;
+      border-radius: 8px;
+    }
+
+    input {
+      border: 1px solid #ccc;
+    }
+
+    button {
+      border: 0;
+      background: #1677ff;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+    }
+
+    .summary {
+      line-height: 2;
+    }
+
+    #preview {
+      max-width: 100%;
+      display: none;
+      margin-top: 10px;
+      border-radius: 8px;
+    }
+
+    .message {
+      padding: 10px;
+      background: #eef5ff;
+      border-radius: 8px;
+      margin-top: 10px;
+    }
+
+    .error {
+      background: #ffecec;
+    }
+
+    .item {
+      border-top: 1px solid #ddd;
+      padding-top: 10px;
+      margin-top: 10px;
+    }
+
+    .receipt {
+      border-top: 1px solid #ddd;
+      padding: 10px 0;
+    }
+
+    #exportExcel {
+      background: #16883e;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <h1>مصروفي</h1>
+
+  <div class="box">
+    <label>الشهر</label>
+    <input id="month" type="month">
+
+    <label>الراتب الشهري (د.ع)</label>
+    <input id="salary" type="number" inputmode="numeric">
+
+    <button id="saveSalary">حفظ الراتب</button>
+  </div>
+
+  <div class="box summary">
+    <div>الراتب: <strong id="salaryView">0 د.ع</strong></div>
+    <div>المصروف: <strong id="spentView">0 د.ع</strong></div>
+    <div>المتبقي: <strong id="remainingView">0 د.ع</strong></div>
+  </div>
+
+  <div class="box">
+    <h2>إضافة فاتورة</h2>
+
+    <input
+      id="receiptImage"
+      type="file"
+      accept="image/jpeg,image/png,image/webp"
+      capture="environment"
+    >
+
+    <img id="preview">
+
+    <button id="readButton">قراءة الفاتورة</button>
+
+    <div id="status"></div>
+    <div id="receiptEditor"></div>
+  </div>
+
+  <div class="box">
+    <h2>الفواتير المحفوظة</h2>
+    <div id="receiptList"></div>
+  </div>
+
+  <div class="box">
+    <h2>تصدير الفواتير</h2>
+    <button id="exportExcel">تصدير إلى Excel</button>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const monthInput = document.getElementById("month");
+  const salaryInput = document.getElementById("salary");
+  const saveSalaryButton = document.getElementById("saveSalary");
+  const imageInput = document.getElementById("receiptImage");
+  const preview = document.getElementById("preview");
+  const readButton = document.getElementById("readButton");
+  const status = document.getElementById("status");
+  const editor = document.getElementById("receiptEditor");
+  const exportBtn = document.getElementById("exportExcel");
+
+  let currentReceipt = null;
+
+  function currentMonth() {
+    const d = new Date();
+
+    return d.getFullYear() + "-" +
+      String(d.getMonth() + 1).padStart(2, "0");
+  }
+
+  function key() {
+    return "masroofi_" + monthInput.value;
+  }
+
+  function getData() {
+    try {
+      return JSON.parse(localStorage.getItem(key())) || {
+        salary: 0,
+        receipts: []
+      };
+    } catch (e) {
+      return {
+        salary: 0,
+        receipts: []
+      };
+    }
+  }
+
+  function setData(data) {
+    localStorage.setItem(key(), JSON.stringify(data));
+  }
+
+  function money(value) {
+    const n = Number(value) || 0;
+    return n.toLocaleString("ar-IQ") + " د.ع";
+  }
+
+  function totalSpent(data) {
+    return data.receipts.reduce(function (sum, receipt) {
+      return sum + (Number(receipt.total) || 0);
+    }, 0);
+  }
+
+  function render() {
+    const data = getData();
+    const spent = totalSpent(data);
+
+    salaryInput.value = data.salary || "";
+
+    document.getElementById("salaryView").textContent =
+      money(data.salary);
+
+    document.getElementById("spentView").textContent =
+      money(spent);
+
+    document.getElementById("remainingView").textContent =
+      money((Number(data.salary) || 0) - spent);
+
+    renderList(data);
+  }
+
+  function renderList(data) {
+    const list = document.getElementById("receiptList");
+
+    if (!data.receipts.length) {
+      list.innerHTML = "لا توجد فواتير محفوظة.";
+      return;
+    }
+
+    list.innerHTML = "";
+
+    data.receipts.forEach(function (receipt, index) {
+      const div = document.createElement("div");
+      div.className = "receipt";
+
+      const title = document.createElement("strong");
+
+      title.textContent =
+        (receipt.store_name || "متجر غير معروف") +
+        " — " +
+        money(receipt.total);
+
+      const date = document.createElement("div");
+      date.textContent =
+        receipt.date || "التاريخ غير واضح";
+
+      const del = document.createElement("button");
+      del.textContent = "حذف الفاتورة";
+
+      del.addEventListener("click", function () {
+        const fresh = getData();
+
+        fresh.receipts.splice(index, 1);
+
+        setData(fresh);
+        render();
+      });
+
+      div.appendChild(title);
+      div.appendChild(date);
+      div.appendChild(del);
+
+      list.appendChild(div);
+    });
+  }
+
+  saveSalaryButton.addEventListener("click", function () {
+    const data = getData();
+
+    data.salary =
+      Number(salaryInput.value) || 0;
+
+    setData(data);
+    render();
+
+    alert("تم حفظ الراتب");
+  });
+
+  monthInput.addEventListener("change", render);
+
+  imageInput.addEventListener("change", function () {
+    if (!imageInput.files.length) {
+      preview.style.display = "none";
+      return;
+    }
+
+    preview.src =
+      URL.createObjectURL(imageInput.files[0]);
+
+    preview.style.display = "block";
+  });
+
+  function fileToDataURL(file) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+
+      reader.onload = function () {
+        resolve(reader.result);
+      };
+
+      reader.onerror = function () {
+        reject(new Error("تعذر قراءة الصورة"));
+      };
+
+      reader.readAsDataURL(file);
+    });
+  }
+
+  readButton.addEventListener("click", async function () {
+
+    if (!imageInput.files.length) {
+      alert("اختاري صورة الفاتورة أولاً");
+      return;
+    }
+
+    status.className = "message";
+    status.textContent = "جاري قراءة الفاتورة...";
+
+    readButton.disabled = true;
+    editor.innerHTML = "";
+
+    try {
+
+      const image =
+        await fileToDataURL(imageInput.files[0]);
+
+      const response =
+        await fetch("/api/read-receipt", {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json"
+          },
+
+          body: JSON.stringify({
+            image: image
+          })
+        });
+
+      const text = await response.text();
+
+      let result;
+
+      try {
+        result = JSON.parse(text);
+      } catch (e) {
+        throw new Error(
+          "الخادم أرجع جواب غير مفهوم: " +
+          text.slice(0, 150)
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          result.error || "فشل قراءة الفاتورة"
+        );
+      }
+
+      currentReceipt = result;
+
+      status.className = "message";
+      status.textContent =
+        "تمت القراءة. راجعي المعلومات قبل الحفظ.";
+
+      showEditor();
+
+    } catch (error) {
+
+      status.className = "message error";
+
+      status.textContent =
+        "الخطأ: " + error.message;
+
+    } finally {
+
+      readButton.disabled = false;
+    }
+  });
+
+  function showEditor() {
+
+    editor.innerHTML = "";
+
+    const storeLabel =
+      document.createElement("label");
+
+    storeLabel.textContent = "اسم المتجر";
+
+    const store =
+      document.createElement("input");
+
+    store.id = "editStore";
+    store.value =
+      currentReceipt.store_name || "";
+
+    const dateLabel =
+      document.createElement("label");
+
+    dateLabel.textContent = "تاريخ الفاتورة";
+
+    const date =
+      document.createElement("input");
+
+    date.id = "editDate";
+    date.type = "date";
+    date.value =
+      currentReceipt.date || "";
+
+    const totalLabel =
+      document.createElement("label");
+
+    totalLabel.textContent = "المجموع الكلي";
+
+    const total =
+      document.createElement("input");
+
+    total.id = "editTotal";
+    total.type = "number";
+    total.inputMode = "decimal";
+
+    total.value =
+      currentReceipt.total == null
+        ? ""
+        : currentReceipt.total;
+
+    const itemsTitle =
+      document.createElement("h3");
+
+    itemsTitle.textContent = "المواد";
+
+    editor.appendChild(storeLabel);
+    editor.appendChild(store);
+
+    editor.appendChild(dateLabel);
+    editor.appendChild(date);
+
+    editor.appendChild(totalLabel);
+    editor.appendChild(total);
+
+    editor.appendChild(itemsTitle);
+
+    const items =
+      Array.isArray(currentReceipt.items)
+        ? currentReceipt.items
+        : [];
+
+    if (!items.length) {
+
+      const noItems =
+        document.createElement("div");
+
+      noItems.textContent =
+        "لم يتم التعرف على مواد.";
+
+      editor.appendChild(noItems);
+    }
+
+    items.forEach(function (item) {
+
+      const div =
+        document.createElement("div");
+
+      div.className = "item";
+
+      div.textContent =
+        (item.name || "مادة غير واضحة") +
+        " — الكمية: " +
+        (item.quantity == null
+          ? "؟"
+          : item.quantity) +
+        " — السعر: " +
+        (item.unit_price == null
+          ? "؟"
+          : money(item.unit_price)) +
+        " — المجموع: " +
+        (item.total == null
+          ? "؟"
+          : money(item.total));
+
+      editor.appendChild(div);
+    });
+
+    const save =
+      document.createElement("button");
+
+    save.textContent = "حفظ الفاتورة";
+
+    save.addEventListener(
+      "click",
+      saveReceipt
+    );
+
+    editor.appendChild(save);
+  }
+
+  function saveReceipt() {
+
+    const date =
+      document.getElementById("editDate").value;
+
+    if (!date) {
+      alert("تاريخ الفاتورة مطلوب");
+      return;
+    }
+
+    const data = getData();
+
+    const before =
+      (Number(data.salary) || 0) -
+      totalSpent(data);
+
+    currentReceipt.store_name =
+      document
+        .getElementById("editStore")
+        .value
+        .trim();
+
+    currentReceipt.date = date;
+
+    currentReceipt.total =
+      Number(
+        document.getElementById("editTotal").value
+      ) || 0;
+
+    currentReceipt.balance_before = before;
+
+    currentReceipt.balance_after =
+      before - currentReceipt.total;
+
+    data.receipts.push(currentReceipt);
+
+    setData(data);
+
+    currentReceipt = null;
+
+    editor.innerHTML = "";
+
+    status.className = "message";
+    status.textContent =
+      "تم حفظ الفاتورة.";
+
+    imageInput.value = "";
+
+    preview.style.display = "none";
+
+    render();
+  }
+
+  function exportExcel() {
+
+    const data = getData();
+
+    if (!data.receipts.length) {
+      alert("لا توجد فواتير لتصديرها");
+      return;
+    }
+
+    const rows = [
+      [
+        "التاريخ",
+        "المحل",
+        "المادة",
+        "الكمية",
+        "سعر الوحدة",
+        "المجموع"
+      ]
+    ];
+
+    data.receipts.forEach(function (receipt) {
+
+      const items =
+        Array.isArray(receipt.items)
+          ? receipt.items
+          : [];
+
+      if (!items.length) {
+
+        rows.push([
+          receipt.date || "",
+          receipt.store_name || "",
+          "",
+          "",
+          "",
+          receipt.total || ""
+        ]);
+
+        return;
+      }
+
+      items.forEach(function (item) {
+
+        rows.push([
+          receipt.date || "",
+          receipt.store_name || "",
+          item.name || "",
+          item.quantity == null
+            ? ""
+            : item.quantity,
+          item.unit_price == null
+            ? ""
+            : item.unit_price,
+          item.total == null
+            ? ""
+            : item.total
+        ]);
+
+      });
+    });
+
+    const csv =
+      "\uFEFF" +
+      rows.map(function (row) {
+
+        return row.map(function (value) {
+
+          return '"' +
+            String(value)
+              .replace(/"/g, '""') +
+            '"';
+
+        }).join(",");
+
+      }).join("\n");
+
+    const file = new File(
+      [csv],
+      "فواتير-مصروفي.csv",
+      {
+        type: "text/csv;charset=utf-8"
+      }
+    );
+
+    if (
+      navigator.share &&
+      navigator.canShare &&
+      navigator.canShare({
+        files: [file]
+      })
+    ) {
+
+      navigator.share({
+        files: [file],
+        title: "فواتير مصروفي"
+      }).catch(function () {
+      });
+
+    } else {
+
+      const blobUrl =
+        URL.createObjectURL(file);
+
+      const link =
+        document.createElement("a");
+
+      link.href = blobUrl;
+      link.download =
+        "فواتير-مصروفي.csv";
+
+      document.body.appendChild(link);
+
+      link.click();
+      link.remove();
+
+      setTimeout(function () {
+        URL.revokeObjectURL(blobUrl);
+      }, 1000);
+    }
+  }
+
+  exportBtn.addEventListener(
+    "click",
+    exportExcel
+  );
+
+  monthInput.value = currentMonth();
+
+  render();
+
+})();
+</script>
+
+</body>
+</html>

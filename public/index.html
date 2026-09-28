@@ -168,6 +168,7 @@
   const exportBtn = document.getElementById("exportExcel");
 
   let currentReceipt = null;
+  let selectedFile = null;
 
   function currentMonth() {
     const d = new Date();
@@ -287,13 +288,14 @@
   monthInput.addEventListener("change", render);
 
   imageInput.addEventListener("change", function () {
-    if (!imageInput.files.length) {
-      preview.style.display = "none";
-      return;
-    }
+    if (!selectedFile) {
+  alert("اختاري صورة الفاتورة أولاً");
+  return;
+}
+    
+	selectedFile = imageInput.files[0];
 
-    preview.src =
-      URL.createObjectURL(imageInput.files[0]);
+   preview.src = URL.createObjectURL(selectedFile);
 
     preview.style.display = "block";
   });
@@ -329,8 +331,7 @@
 
     try {
 
-      const image =
-        await fileToDataURL(imageInput.files[0]);
+      const image = await fileToDataURL(selectedFile);
 
       const response =
         await fetch("/api/read-receipt", {
